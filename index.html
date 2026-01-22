@@ -80,6 +80,7 @@
             gap: 10px;
             justify-content: center;
             margin-top: 30px;
+            flex-wrap: wrap;
         }
 
         button {
@@ -136,6 +137,32 @@
             margin-bottom: 10px;
         }
 
+        /* Block Break Screen */
+        .block-break-screen {
+            text-align: center;
+        }
+
+        .block-break-screen h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+
+        .block-break-screen p {
+            color: #666;
+            font-size: 18px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .block-break-screen .block-info {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4CAF50;
+        }
+
         /* Task Screen (Canvas Area) */
         .task-screen {
             position: relative;
@@ -151,6 +178,15 @@
             display: block;
             margin: 0 auto;
             background-color: #000;
+        }
+
+        .trial-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 14px;
+            text-align: right;
         }
 
         /* Feedback Screen */
@@ -272,28 +308,31 @@
                 <li>Press <strong>L</strong> for stimuli on the RIGHT side</li>
                 <li>Response speed and accuracy are important</li>
             </ul>
-            <p style="margin-top: 20px; font-weight: bold;">There will be 100 trials. Press Space or click "Continue" to begin.</p>
+            <p style="margin-top: 20px; font-weight: bold;">There will be 2 blocks of 50 trials each (100 trials total). Press Space or click "Continue" to begin.</p>
             <div class="button-group">
                 <button onclick="startInstructions()">Continue</button>
+            </div>
+        </div>
+
+        <!-- Block Break Screen -->
+        <div class="screen block-break-screen">
+            <h2>Block Break</h2>
+            <p>You have completed Block <span id="completedBlockNumber">1</span> of 2.</p>
+            <div class="block-info">
+                <p>Take a moment to rest if needed.</p>
+                <p>Block 2 will begin when you click the button below.</p>
+            </div>
+            <div class="button-group">
+                <button onclick="startBlock2()">Begin Block 2</button>
             </div>
         </div>
 
         <!-- Task Screen -->
         <div class="screen task-screen">
             <canvas id="experimentCanvas" width="800" height="500"></canvas>
-            <div style="position: absolute; bottom: 10px; color: white; font-size: 14px;">
-                Trial <span id="trialCounter">1</span> / 100
-            </div>
-        </div>
-
-        <!-- Feedback Screen -->
-        <div class="screen feedback-screen">
-            <h2>Trial Results</h2>
-            <div class="feedback-content">
-                <div id="feedbackContent"></div>
-            </div>
-            <div class="button-group">
-                <button onclick="continueToNextTrial()" id="continueButton">Continue to Next Trial</button>
+            <div class="trial-info">
+                <div>Block <span id="blockNumber">1</span> / 2</div>
+                <div>Trial <span id="trialCounter">1</span> / 50</div>
             </div>
         </div>
 
@@ -316,8 +355,11 @@
         // Experiment State
         const experimentState = {
             participantNumber: null,
-            currentTrial: 0,
-            totalTrials: 100,
+            currentBlock: 1,
+            totalBlocks: 2,
+            trialsPerBlock: 50,
+            currentTrialInBlock: 0,
+            totalTrialsCompleted: 0,
             trials: [],
             trialData: [],
             startTime: null,
@@ -339,10 +381,10 @@
             { name: "cueright targetright cued 0", cuePos: POSITIONS.RIGHT, targetPos: POSITIONS.RIGHT, condition: 2 }
         ];
 
-        // Generate random trial sequence
-        function generateTrialSequence() {
+        // Generate random trial sequence for a block
+        function generateBlockTrials() {
             experimentState.trials = [];
-            for (let i = 0; i < experimentState.totalTrials; i++) {
+            for (let i = 0; i < experimentState.trialsPerBlock; i++) {
                 const condition = trialConditions[Math.floor(Math.random() * trialConditions.length)];
                 experimentState.trials.push({ ...condition });
             }
@@ -370,14 +412,26 @@
             
             experimentState.participantNumber = participantNumber;
             errorDiv.textContent = '';
-            generateTrialSequence();
             switchScreen('instruction-screen');
         }
 
         function startInstructions() {
             experimentState.startTime = Date.now();
-            experimentState.currentTrial = 0;
+            experimentState.currentBlock = 1;
+            experimentState.currentTrialInBlock = 0;
+            experimentState.totalTrialsCompleted = 0;
             experimentState.trialData = [];
+            
+            generateBlockTrials();
+            switchScreen('task-screen');
+            runTrial();
+        }
+
+        function startBlock2() {
+            experimentState.currentBlock = 2;
+            experimentState.currentTrialInBlock = 0;
+            
+            generateBlockTrials();
             switchScreen('task-screen');
             runTrial();
         }
@@ -439,15 +493,23 @@
 
         // Trial execution
         async function runTrial() {
-            if (experimentState.currentTrial >= experimentState.totalTrials) {
-                showResults();
+            if (experimentState.currentTrialInBlock >= experimentState.trialsPerBlock) {
+                // Check if this is the end of block 1
+                if (experimentState.currentBlock === 1) {
+                    document.getElementById('completedBlockNumber').textContent = '1';
+                    switchScreen('block-break-screen');
+                } else {
+                    // End of block 2
+                    showResults();
+                }
                 return;
             }
 
-            const trial = experimentState.trials[experimentState.currentTrial];
+            const trial = experimentState.trials[experimentState.currentTrialInBlock];
             experimentState.trialStartTime = Date.now();
             
-            document.getElementById('trialCounter').textContent = experimentState.currentTrial + 1;
+            document.getElementById('blockNumber').textContent = experimentState.currentBlock;
+            document.getElementById('trialCounter').textContent = experimentState.currentTrialInBlock + 1;
             
             clearScreen();
             
@@ -503,7 +565,9 @@
             
             // Store trial data
             experimentState.trialData.push({
-                trial: experimentState.currentTrial + 1,
+                block: experimentState.currentBlock,
+                trial: experimentState.currentTrialInBlock + 1,
+                totalTrial: experimentState.totalTrialsCompleted + experimentState.currentTrialInBlock + 1,
                 condition: trial.condition,
                 cuePos: trial.cuePos,
                 targetPos: trial.targetPos,
@@ -511,8 +575,10 @@
                 correct: correct ? 1 : 0
             });
             
-            // Show feedback
-            showTrialFeedback(responseTime, correct);
+            // Move to next trial automatically
+            experimentState.currentTrialInBlock++;
+            await delay(500); // 500ms intertrial interval
+            runTrial();
         }
 
         function waitForResponse(timeoutMs) {
@@ -549,26 +615,6 @@
             return (isLeft && pressedLeft) || (!isLeft && !pressedLeft);
         }
 
-        function showTrialFeedback(responseTime, correct) {
-            switchScreen('feedback-screen');
-            
-            const feedbackDiv = document.getElementById('feedbackContent');
-            
-            if (responseTime === null) {
-                feedbackDiv.innerHTML = '<div class="error-message">No response detected (Timeout)</div>';
-            } else if (!correct) {
-                feedbackDiv.innerHTML = '<div class="error-message">Incorrect response!</div><div class="feedback-item"><span class="feedback-label">Response Time:</span> <span class="feedback-value">' + responseTime.rt + ' ms</span></div>';
-            } else {
-                feedbackDiv.innerHTML = '<div class="feedback-item"><span class="feedback-label">Correct!</span></div><div class="feedback-item"><span class="feedback-label">Response Time:</span> <span class="feedback-value">' + responseTime.rt + ' ms</span></div>';
-            }
-        }
-
-        function continueToNextTrial() {
-            experimentState.currentTrial++;
-            switchScreen('task-screen');
-            runTrial();
-        }
-
         // Results and Feedback
         function showResults() {
             switchScreen('end-screen');
@@ -580,22 +626,40 @@
             const rtUncued = uncued.length > 0 ? uncued.reduce((sum, t) => sum + t.responseTime, 0) / uncued.length : 0;
             const iorEffect = rtCued - rtUncued;
             
+            const totalTrials = experimentState.trialData.length;
             const totalCorrect = experimentState.trialData.filter(t => t.correct === 1).length;
-            const accuracy = ((totalCorrect / experimentState.totalTrials) * 100).toFixed(2);
+            const accuracy = ((totalCorrect / totalTrials) * 100).toFixed(2);
+            
+            // Block-specific analysis
+            const block1Data = experimentState.trialData.filter(t => t.block === 1);
+            const block2Data = experimentState.trialData.filter(t => t.block === 2);
+            
+            const block1Correct = block1Data.filter(t => t.correct === 1).length;
+            const block2Correct = block2Data.filter(t => t.correct === 1).length;
+            const block1Accuracy = ((block1Correct / block1Data.length) * 100).toFixed(2);
+            const block2Accuracy = ((block2Correct / block2Data.length) * 100).toFixed(2);
             
             const feedbackDiv = document.getElementById('finalFeedback');
             feedbackDiv.innerHTML = `
                 <div class="feedback-item">
                     <span class="feedback-label">Total Trials:</span> 
-                    <span class="feedback-value">${experimentState.totalTrials}</span>
+                    <span class="feedback-value">${totalTrials}</span>
                 </div>
                 <div class="feedback-item">
-                    <span class="feedback-label">Correct Responses:</span> 
+                    <span class="feedback-label">Overall Correct Responses:</span> 
                     <span class="feedback-value">${totalCorrect}</span>
                 </div>
                 <div class="feedback-item">
-                    <span class="feedback-label">Accuracy:</span> 
+                    <span class="feedback-label">Overall Accuracy:</span> 
                     <span class="feedback-value">${accuracy}%</span>
+                </div>
+                <div class="feedback-item">
+                    <span class="feedback-label">Block 1 Accuracy:</span> 
+                    <span class="feedback-value">${block1Accuracy}%</span>
+                </div>
+                <div class="feedback-item">
+                    <span class="feedback-label">Block 2 Accuracy:</span> 
+                    <span class="feedback-value">${block2Accuracy}%</span>
                 </div>
                 <div class="feedback-item">
                     <span class="feedback-label">RT (Cued conditions):</span> 
@@ -617,11 +681,11 @@
             const filename = `IOR_P${experimentState.participantNumber}_${getTimestamp()}.csv`;
             
             // Header
-            let csv = 'Participant_ID,Trial,Condition,Cue_Position,Target_Position,Response_Time_ms,Correct\n';
+            let csv = 'Participant_ID,Block,Trial_in_Block,Total_Trial,Condition,Cue_Position,Target_Position,Response_Time_ms,Correct\n';
             
             // Data rows
             experimentState.trialData.forEach(trial => {
-                csv += `${experimentState.participantNumber},${trial.trial},${trial.condition},${trial.cuePos},${trial.targetPos},${trial.responseTime},${trial.correct}\n`;
+                csv += `${experimentState.participantNumber},${trial.block},${trial.trial},${trial.totalTrial},${trial.condition},${trial.cuePos},${trial.targetPos},${trial.responseTime},${trial.correct}\n`;
             });
             
             // Create and trigger download
@@ -653,7 +717,9 @@
 
         function resetExperiment() {
             experimentState.participantNumber = null;
-            experimentState.currentTrial = 0;
+            experimentState.currentBlock = 1;
+            experimentState.currentTrialInBlock = 0;
+            experimentState.totalTrialsCompleted = 0;
             experimentState.trials = [];
             experimentState.trialData = [];
             document.getElementById('participantNumber').value = '';
